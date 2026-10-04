@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Model 3D - Calcul Tabelar</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { margin: 0; overflow: hidden; font-family: 'Inter', sans-serif; background-color: #0f172a; }
+        #canvas-container { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; }
+        .ui-layer { position: absolute; z-index: 10; pointer-events: none; }
+        .interactive { pointer-events: auto; }
+        
+        /* Custom scrollbar for text areas */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+        
+        /* Glassmorphism utilities */
+        .glass {
+            background: rgba(30, 41, 59, 0.8);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+    </style>
+
+    <!-- Load Three.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- Load OrbitControls -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <!-- Load Tween.js for smooth animations -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tween.js/18.6.4/tween.umd.js"></script>
+</head>
+<body>
+
+    <!-- UI Overlay -->
+    <div class="ui-layer w-full h-full flex flex-col md:flex-row justify-between p-4 md:p-6 gap-4 text-white">
+        
+        <!-- Left Panel: Controls & Concepts -->
+        <div class="interactive glass w-full md:w-80 rounded-2xl flex flex-col shadow-2xl overflow-hidden h-auto md:h-full max-h-screen">
+            <div class="bg-green-600 p-4 border-b border-green-500">
+                <h1 class="text-xl font-bold flex items-center gap-2">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                    Structură Excel 3D
+                </h1>
+                <p class="text-green-100 text-xs mt-1">Explorare interactivă cf. "Excel_2.pdf"</p>
+            </div>
+            
+            <div class="p-4 flex-1 overflow-y-auto">
+                <p class="text-sm text-slate-300 mb-4">
+                    Folosește mouse-ul / ecranul tactil pentru a roti modelul 3D. Alege un concept de mai jos pentru a-l vizualiza.
+                </p>
+
+                <div class="space-y-2 flex flex-col">
+                    <button onclick="highlightConcept('registru')" class="concept-btn text-left px-4 py-3 rounded-xl bg-slate-700/50 hover:bg-green-600/30 border border-slate-600 hover:border-green-500 transition-all">
+                        <span class="block font-semibold text-green-400">1. Registru de calcul</span>
+                        <span class="text-xs text-slate-400">Vizualizare de ansamblu (Workbook)</span>
+                    </button>
+                    
+                    <button onclick="highlightConcept('foaie')" class="concept-btn text-left px-4 py-3 rounded-xl bg-slate-700/50 hover:bg-green-600/30 border border-slate-600 hover:border-green-500 transition-all">
+                        <span class="block font-semibold text-green-400">2. Foaie de calcul</span>
+                        <span class="text-xs text-slate-400">Tabelul principal (Worksheet)</span>
+                    </button>
+                    
+                    <button onclick="highlightConcept('coloana')" class="concept-btn text-left px-4 py-3 rounded-xl bg-slate-700/50 hover:bg-green-600/30 border border-slate-600 hover:border-green-500 transition-all">
+                        <span class="block font-semibold text-green-400">3. Coloană</span>
+                        <span class="text-xs text-slate-400">Etichetate cu litere (A, B, C...)</span>
+                    </button>
+                    
+                    <button onclick="highlightConcept('rand')" class="concept-btn text-left px-4 py-3 rounded-xl bg-slate-700/50 hover:bg-green-600/30 border border-slate-600 hover:border-green-500 transition-all">
+                        <span class="block font-semibold text-green-400">4. Rând</span>
+                        <span class="text-xs text-slate-400">Etichetate cu numere (1, 2, 3...)</span>
+                    </button>
+                    
+                    <button onclick="highlightConcept('celula')" class="concept-btn text-left px-4 py-3 rounded-xl bg-slate-700/50 hover:bg-green-600/30 border border-slate-600 hover:border-green-500 transition-all">
+                        <span class="block font-semibold text-green-400">5. Celulă & Adresă</span>
+                        <span class="text-xs text-slate-400">Intersecția (ex: B2). <br/>*Click pe o celulă 3D!</span>
+                    </button>
+                </div>
+            </div>
+            
+            <button onclick="resetCamera()" class="interactive m-4 p-2 bg-slate-600 hover:bg-slate-500 rounded-lg text-sm transition-colors shadow-md text-center">
+                Resetează Camera
+            </button>
+        </div>
+
+        <!-- Right Panel: Info Box -->
+        <div class="interactive glass w-full md:w-96 rounded-2xl p-5 shadow-2xl h-auto self-end md:self-start mt-auto md:mt-0">
+            <div id="info-header" class="text-lg font-bold text-green-400 border-b border-slate-600 pb-2 mb-3">
+                Bine ai venit!
+            </div>
+            <div id="info-content" class="text-sm text-slate-300 leading-relaxed min-h-[120px]">
+                Aplicația simulează interfața descrisă în <span class="text-white font-semibold">Excel_2.pdf</span>.<br><br>
+                Apasă pe conceptele din stânga sau interacționează direct cu celulele din spațiul 3D pentru a citi definițiile.
+            </div>
+            <div id="cell-address-display" class="hidden mt-4 bg-slate-900/80 rounded-lg p-3 text-center border border-slate-700">
+                <span class="text-xs text-slate-400 uppercase tracking-widest">Adresă Celulă Selectată</span>
+                <div id="active-cell-id" class="text-3xl font-mono font-bold text-white mt-1">--</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 3D Canvas Container -->
+    <div id="canvas-container"></div>
+
+    <script>
+        // --- 3D Scene Setup ---
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color('#0f172a');
+        scene.fog = new THREE.FogExp2('#0f172a', 0.02);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        container.appendChild(renderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.maxPolarAngle = Math.PI / 2.1; // Don't go below ground
+        controls.minDistance = 5;
+        controls.maxDistance = 50;
+
+        // Lighting
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(10, 20, 10);
+        dirLight.castShadow = true;
+        dirLight.shadow.mapSize.width = 2048;
+        dirLight.shadow.mapSize.height = 2048;
+        scene.add(dirLight);
+
+        // --- Data Definitions ---
+        const cols = ['A', 'B', 'C', 'D', 'E', 'F'];
+        const numRows = 8;
+        const cellSize = { w: 2.5, h: 0.2, d: 1.2 };
+        const gap = 0.05;
+        
+        const cells = []; // Store meshes for raycasting
+        const headers = []; // Store header meshes
+        const worksheets = []; // For "Registru" concept
+
+        // Colors
+        const colors = {
+            base: 0x334155, // slate-700
+            hover: 0x475569,
+            selected: 0x16a34a, // green-600
+            header: 0x1e293b, // slate-800
+            headerText: '#f8fafc',
+            gridLine: 0x475569
+        };
+
+        // --- Helper: Generate Text Textures for Headers ---
+        function createTextTexture(text) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 128;
+            canvas.height = 128;
+            const context = canvas.getContext('2d');
+            
+            context.fillStyle = '#1e293b'; // Header bg
+            context.fillRect(0, 0, 128, 128);
+            
+            // Border
+            context.strokeStyle = '#475569';
+            context.lineWidth = 4;
+            context.strokeRect(0, 0, 128, 128);
+
+            context.font = 'bold 60px Inter, sans-serif';
+            context.fillStyle = colors.headerText;
+            context.textAlign = 'center';
+            context.textBaseline = 'middle';
+            context.fillText(text, 64, 64);
+            
+            const texture = new THREE.CanvasTexture(canvas);
+            return texture;
+        }
+
+        // --- Build Spreadsheet Grid ---
+        const gridGroup = new THREE.Group();
+        scene.add(gridGroup);
+
+        const cellGeometry = new THREE.BoxGeometry(cellSize.w, cellSize.h, cellSize.d);
+        const headerGeometryCol = new THREE.BoxGeometry(cellSize.w, cellSize.h * 1.5, cellSize.d);
+        const headerGeometryRow = new THREE.BoxGeometry(cellSize.d * 1.2, cellSize.h * 1.5, cellSize.d); // Wider for numbers
+
+        // Materials
+        const cellMaterial = new THREE.MeshStandardMaterial({ 
+            color: colors.base, 
+            roughness: 0.2, 
+            metalness: 0.1 
+        });
+
+        // 1. Create Column Headers (A, B, C...)
+        for (let c = 0; c < cols.length; c++) {
+            const mat = new THREE.MeshStandardMaterial({ map: createTextTexture(cols[c]) });
+            const mesh = new THREE.Mesh(headerGeometryCol, mat);
+            
+            const xPos = c * (cellSize.w + gap);
+            const zPos = - (cellSize.d + gap); // Place above row 1
+            
+            mesh.position.set(xPos, 0, zPos);
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+            mesh.userData = { type: 'header', col: c };
+            
+            gridGroup.add(mesh);
+            headers.push(mesh);
+        }
+
+        // 2. Create Row Headers (1, 2, 3...)
+        for (let r = 0; r < numRows; r++) {
+            const mat = new THREE.MeshStandardMaterial({ map: createTextTexture((r + 1).toString()) });
+            const mesh = new THREE.Mesh(headerGeometryRow, mat);
+            
+            const xPos = - (cellSize.d * 1.2 + gap); // Place left of col A
+            const zPos = r * (cellSize.d + gap);
+            
+            mesh.position.set(xPos, 0, zPos);
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+            mesh.userData = { type: 'header', row: r };
+            
+            gridGroup.add(mesh);
+            headers.push(mesh);
+        }
+
+        // 3. Create Cells
+        for (let r = 0; r < numRows; r++) {
+            for (let c = 0; c < cols.length; c++) {
+                const mesh = new THREE.Mesh(cellGeometry, cellMaterial.clone());
+                
+                const xPos = c * (cellSize.w + gap);
+                const zPos = r * (cellSize.d + gap);
+                
+                mesh.position.set(xPos, 0, zPos);
+                mesh.castShadow = true;
+                mesh.receiveShadow = true;
+                
+                // Add outlines
+                const edges = new THREE.EdgesGeometry(cellGeometry);
+                const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: colors.gridLine }));
+                mesh.add(line);
+
+                // Meta data defined in Excel_2.pdf
+                mesh.userData = { 
+                    type: 'cell', 
+                    col: c, 
+                    row: r, 
+                    colLabel: cols[c], 
+                    rowLabel: r + 1,
+                    address: `${cols[c]}${r + 1}`,
+                    originalY: 0
+                };
+                
+                gridGroup.add(mesh);
+                cells.push(mesh);
+            }
+        }
+
+        // Center the grid in the scene
+        const gridBox = new THREE.Box3().setFromObject(gridGroup);
+        const center = gridBox.getCenter(new THREE.Vector3());
+        gridGroup.position.x = -center.x;
+        gridGroup.position.z = -center.z;
+
+        // Create dummy stacked worksheets for "Registru" concept
+        for(let i=1; i<=3; i++) {
+            const sheetPlane = new THREE.Mesh(
+                new THREE.BoxGeometry(gridBox.max.x - gridBox.min.x + 2, 0.1, gridBox.max.z - gridBox.min.z + 2),
+                new THREE.MeshStandardMaterial({ color: 0x1e293b, transparent: true, opacity: 0 })
+            );
+            sheetPlane.position.set(0, -i * 1.5, 0);
+            scene.add(sheetPlane);
+            worksheets.push(sheetPlane);
+        }
+
+        // Initial Camera Position
+        function resetCamera() {
+            new TWEEN.Tween(camera.position)
+                .to({ x: 0, y: 15, z: 15 }, 1000)
+                .easing(TWEEN.Easing.Cubic.Out)
+                .start();
+            new TWEEN.Tween(controls.target)
+                .to({ x: 0, y: 0, z: 0 }, 1000)
+                .easing(TWEEN.Easing.Cubic.Out)
+                .start();
+            resetHighlights();
+        }
+        camera.position.set(0, 15, 15);
+
+        // --- Interaction & Raycasting ---
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+        let hoveredCell = null;
+        let selectedCell = null;
+        let currentConcept = null;
+
+        function onPointerMove(event) {
+            // Calculate mouse position in normalized device coordinates
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+        }
+
+        function onPointerClick(event) {
+            if(event.target.closest('.ui-layer')) return; // Ignore UI clicks
+
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects(cells);
+
+            if (intersects.length > 0) {
+                const object = intersects[0].object;
+                if (object.userData.type === 'cell') {
+                    selectCell(object);
+                }
+            } else {
+                resetHighlights();
+                updateUI('implicit');
+            }
+        }
+
+        window.addEventListener('pointermove', onPointerMove);
+        window.addEventListener('click', onPointerClick);
+
+        function resetHighlights() {
+            cells.forEach(cell => {
+                if (cell !== selectedCell) {
+                    new TWEEN.Tween(cell.material.color)
+                        .to(new THREE.Color(colors.base), 300)
+                        .start();
+                    new TWEEN.Tween(cell.position)
+                        .to({ y: cell.userData.originalY }, 300)
+                        .easing(TWEEN.Easing.Quadratic.Out)
+                        .start();
+                }
+            });
+            
+            worksheets.forEach(sheet => {
+                 new TWEEN.Tween(sheet.material)
+                        .to({ opacity: 0 }, 500)
+                        .start();
+            });
+            
+            document.getElementById('cell-address-display').classList.add('hidden');
+            currentConcept = null;
+        }
+
+        function selectCell(cell) {
+            resetHighlights();
+            selectedCell = cell;
+
+            // Animate selection
+            new TWEEN.Tween(cell.material.color)
+                .to(new THREE.Color(colors.selected), 300)
+                .start();
+            
+            new TWEEN.Tween(cell.position)
+                .to({ y: 1 }, 300)
+                .easing(TWEEN.Easing.Back.Out)
+                .start();
+
+            // Update UI from Excel_2.pdf
+            const address = cell.userData.address;
+            document.getElementById('info-header').innerHTML = "Adresă de celulă";
+            document.getElementById('info-content').innerHTML = `
+                Conform <strong>Excel_2.pdf</strong>:<br><br>
+                "Unitatea elementară adresabilă din tabel este celula, aflată la intersecţia unui rând și a unei coloane."<br><br>
+                Ai selectat intersecția dintre coloana <strong>${cell.userData.colLabel}</strong> și rândul <strong>${cell.userData.rowLabel}</strong>.
+            `;
+            
+            const addressDisplay = document.getElementById('cell-address-display');
+            addressDisplay.classList.remove('hidden');
+            document.getElementById('active-cell-id').innerText = address;
+            
+            // Highlight headers corresponding to this cell
+            headers.forEach(h => {
+                if(h.userData.type === 'header') {
+                    if((h.userData.col === cell.userData.col && h.userData.row === undefined) || 
+                       (h.userData.row === cell.userData.row && h.userData.col === undefined)) {
+                        h.position.y = 0.5;
+                        h.material.color.setHex(0xa7f3d0); // light green
+                    } else {
+                        h.position.y = 0;
+                        h.material.color.setHex(0xffffff);
+                    }
+                }
+            });
+        }
+
+        // --- Educational Concepts Logic ---
+        window.highlightConcept = function(concept) {
+            resetHighlights();
+            selectedCell = null;
+            headers.forEach(h => { h.position.y = 0; h.material.color.setHex(0xffffff); });
+            currentConcept = concept;
+
+            let headerText = "";
+            let contentText = "";
+
+            switch(concept) {
+                case 'registru':
+                    headerText = "Registrul de calcul (Workbook)";
+                    contentText = `Conform <strong>Excel_2.pdf (pag. 14)</strong>:<br><br>"Mai multe foi de calcul formează împreună un registru de calcul, denumit şi registru de lucru (workbook)."<br><br>Fișierul tău principal este registrul. Observă foile de calcul (Sheet-urile) suprapuse virtual mai jos.`;
+                    
+                    // Show extra worksheets stacked
+                    worksheets.forEach((sheet, index) => {
+                         new TWEEN.Tween(sheet.material)
+                            .to({ opacity: 0.5 - (index*0.1) }, 800)
+                            .start();
+                    });
+                    // Zoom out a bit
+                    new TWEEN.Tween(camera.position).to({x: 0, y: 20, z: 25}, 1000).easing(TWEEN.Easing.Cubic.Out).start();
+                    break;
+
+                case 'foaie':
+                    headerText = "Foaia de calcul (Worksheet)";
+                    contentText = `Conform <strong>Excel_2.pdf (pag. 14)</strong>:<br><br>"O foaie de calcul reprezintă un singur tabel cu mai multe rânduri (linii) etichetate cu numere (1, 2, ...) şi coloane etichetate cu litere (A, B, ...)."`;
+                    
+                    // Highlight the whole grid gently
+                    cells.forEach((cell, i) => {
+                        setTimeout(() => {
+                            new TWEEN.Tween(cell.position).to({y: 0.2}, 200).yoyo(true).repeat(1).start();
+                        }, i * 5);
+                    });
+                    new TWEEN.Tween(camera.position).to({x: 0, y: 15, z: 15}, 1000).easing(TWEEN.Easing.Cubic.Out).start();
+                    break;
+
+                case 'coloana':
+                    headerText = "Coloană";
+                    contentText = `Conform <strong>Excel_2.pdf</strong>:<br><br>Coloanele sunt dispuse vertical și sunt etichetate cu litere în partea superioară (A, B, C...).<br><br>Exemplu: Acum este evidențiată Coloana C.`;
+                    
+                    const targetCol = 2; // Column C
+                    cells.forEach(cell => {
+                        if(cell.userData.col === targetCol) {
+                            cell.material.color.setHex(colors.selected);
+                            new TWEEN.Tween(cell.position).to({y: 0.5}, 500).easing(TWEEN.Easing.Back.Out).start();
+                        }
+                    });
+                    headers.forEach(h => {
+                        if(h.userData.col === targetCol) { h.position.y = 0.5; h.material.color.setHex(0xa7f3d0); }
+                    });
+                    break;
+
+                case 'rand':
+                    headerText = "Rând (Linie)";
+                    contentText = `Conform <strong>Excel_2.pdf</strong>:<br><br>Rândurile sunt dispuse orizontal și sunt etichetate cu numere în partea stângă (1, 2, 3...).<br><br>Exemplu: Acum este evidențiat Rândul 4.`;
+                    
+                    const targetRow = 3; // Row 4
+                    cells.forEach(cell => {
+                        if(cell.userData.row === targetRow) {
+                            cell.material.color.setHex(colors.selected);
+                            new TWEEN.Tween(cell.position).to({y: 0.5}, 500).easing(TWEEN.Easing.Back.Out).start();
+                        }
+                    });
+                    headers.forEach(h => {
+                        if(h.userData.row === targetRow) { h.position.y = 0.5; h.material.color.setHex(0xa7f3d0); }
+                    });
+                    break;
+
+                case 'celula':
+                    headerText = "Celula & Adresa";
+                    contentText = `Conform <strong>Excel_2.pdf</strong>:<br><br>"O celulă este accesată prin eticheta coloanei și a rândului la a căror intersecție se află."<br><br>Aceasta se numește <strong>adresă de celulă</strong>. Fă clic pe oricare bloc din modelul 3D pentru a-i afla adresa!`;
+                    // Automatically click B2 as demo
+                    const demoCell = cells.find(c => c.userData.address === 'B2');
+                    if(demoCell) selectCell(demoCell);
+                    return; // selectCell handles the UI update
+            }
+
+            updateUI(null, headerText, contentText);
+        }
+
+        function updateUI(state, header = "", content = "") {
+            if (state === 'implicit') {
+                document.getElementById('info-header').innerHTML = "Explorare Liberă";
+                document.getElementById('info-content').innerHTML = `Ai deselectat elementele.<br><br>Poți roti camera trăgând cu mouse-ul pe ecran. Selectează un concept din stânga sau o celulă pentru a continua învățarea.`;
+                document.getElementById('cell-address-display').classList.add('hidden');
+            } else {
+                document.getElementById('info-header').innerHTML = header;
+                document.getElementById('info-content').innerHTML = content;
+            }
+        }
+
+        // --- Animation Loop & Resize ---
+        function animate(time) {
+            requestAnimationFrame(animate);
+            TWEEN.update(time);
+            
+            // Hover effect logic
+            if(!currentConcept && !selectedCell) {
+                raycaster.setFromCamera(mouse, camera);
+                const intersects = raycaster.intersectObjects(cells);
+                
+                if(intersects.length > 0) {
+                    const object = intersects[0].object;
+                    if(hoveredCell !== object) {
+                        if(hoveredCell && hoveredCell !== selectedCell) {
+                            hoveredCell.material.color.setHex(colors.base);
+                        }
+                        hoveredCell = object;
+                        if(hoveredCell !== selectedCell) {
+                            hoveredCell.material.color.setHex(colors.hover);
+                        }
+                    }
+                } else {
+                    if(hoveredCell && hoveredCell !== selectedCell) {
+                        hoveredCell.material.color.setHex(colors.base);
+                        hoveredCell = null;
+                    }
+                }
+            }
+
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // Start
+        window.onload = function() {
+            animate();
+        };
+
+    </script>
+</body>
+</html>
